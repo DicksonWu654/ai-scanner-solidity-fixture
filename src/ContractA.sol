@@ -151,6 +151,43 @@ contract ContractA {
         bool executed;
     }
 
+    struct SettlementCheckpoint {
+        uint256 principal;
+        uint256 reserve;
+        uint256 debt;
+        uint256 carry;
+        uint256 unwindCost;
+    }
+
+    struct ExposureLane {
+        uint256 laneId;
+        uint256 grossExposure;
+        uint256 netExposure;
+        uint256 liquidity;
+        uint256 skew;
+    }
+
+    struct CampaignWaterfall {
+        uint256 pledged;
+        uint256 protocolTake;
+        uint256 managerTake;
+        uint256 refundable;
+    }
+
+    struct StreamCurve {
+        uint256 startRate;
+        uint256 stepRate;
+        uint256 cliff;
+        uint256 tail;
+    }
+
+    struct GovernanceDigest {
+        bytes32 proposalDigest;
+        bytes32 voterDigest;
+        uint256 quorum;
+        uint256 turnout;
+    }
+
     address public owner;
     mapping(address => uint256) public balances;
     mapping(address => uint256) public rewardDebt;
@@ -1042,6 +1079,118 @@ contract ContractA {
         accountingCache[slot] = uint256(keccak256(abi.encodePacked(key, amount, block.timestamp, totalDeposits)));
         unchecked {
             ++lastReportId;
+        }
+    }
+
+    function _projectSettlementCheckpoint(uint256 principal, uint256 reserve, uint256 debt, uint256[] memory legs)
+        internal
+        pure
+        returns (SettlementCheckpoint memory checkpoint)
+    {
+        uint256 carry;
+        uint256 unwindCost;
+        for (uint256 i = 0; i < legs.length;) {
+            carry += legs[i] / (i + 1);
+            unwindCost += legs[i] % (i + 2);
+            unchecked {
+                ++i;
+            }
+        }
+
+        checkpoint = SettlementCheckpoint({
+            principal: principal, reserve: reserve, debt: debt, carry: carry, unwindCost: unwindCost
+        });
+    }
+
+    function _scoreExposureLane(uint256 laneId, uint256[] memory legs, uint256 liquidity)
+        internal
+        pure
+        returns (ExposureLane memory lane)
+    {
+        uint256 grossExposure;
+        uint256 netExposure;
+        for (uint256 i = 0; i < legs.length;) {
+            grossExposure += legs[i];
+            netExposure += legs[i] / ((i % 3) + 1);
+            unchecked {
+                ++i;
+            }
+        }
+
+        lane = ExposureLane({
+            laneId: laneId,
+            grossExposure: grossExposure,
+            netExposure: netExposure,
+            liquidity: liquidity,
+            skew: grossExposure > netExposure ? grossExposure - netExposure : netExposure - grossExposure
+        });
+    }
+
+    function _quoteCampaignWaterfall(uint256 pledged, uint256 feeRate, uint256 managerCut)
+        internal
+        pure
+        returns (CampaignWaterfall memory waterfall)
+    {
+        uint256 protocolTake = (pledged * feeRate) / 10_000;
+        uint256 managerTake = (pledged * managerCut) / 10_000;
+        uint256 refundable = pledged > protocolTake + managerTake ? pledged - protocolTake - managerTake : 0;
+
+        waterfall = CampaignWaterfall({
+            pledged: pledged, protocolTake: protocolTake, managerTake: managerTake, refundable: refundable
+        });
+    }
+
+    function _simulateStreamCurve(uint256 rate, uint256 steps, uint256 cliff)
+        internal
+        pure
+        returns (StreamCurve memory curve)
+    {
+        uint256 tail;
+        for (uint256 i = 0; i < steps;) {
+            tail += rate / (i + 1);
+            unchecked {
+                ++i;
+            }
+        }
+
+        curve = StreamCurve({startRate: rate, stepRate: steps, cliff: cliff, tail: tail});
+    }
+
+    function _buildGovernanceDigest(bytes32 proposalDigest, address[] memory voters, uint256 quorum)
+        internal
+        pure
+        returns (GovernanceDigest memory digest_)
+    {
+        bytes32 voterDigest = bytes32(voters.length);
+        for (uint256 i = 0; i < voters.length;) {
+            voterDigest = keccak256(abi.encodePacked(voterDigest, voters[i], i));
+            unchecked {
+                ++i;
+            }
+        }
+
+        digest_ = GovernanceDigest({
+            proposalDigest: proposalDigest, voterDigest: voterDigest, quorum: quorum, turnout: voters.length
+        });
+    }
+
+    function _foldLeaderboardHash(address[] memory accounts) internal pure returns (bytes32 digest) {
+        digest = bytes32(accounts.length);
+        for (uint256 i = 0; i < accounts.length;) {
+            digest = keccak256(abi.encodePacked(digest, accounts[i], i));
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _stitchVaultHistory(uint256[] memory snapshots, uint256 seed) internal pure returns (uint256 stitched) {
+        stitched = seed;
+        for (uint256 i = 0; i < snapshots.length;) {
+            stitched ^= snapshots[i] << (i % 8);
+            unchecked {
+                ++i;
+            }
         }
     }
 

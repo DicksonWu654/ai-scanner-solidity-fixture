@@ -11,7 +11,7 @@ This repository contains intentionally vulnerable Solidity code for scanner test
 This repo is a purpose-built scanner fixture for testing whether a tool follows imported Solidity files.
 
 - `src/ContractA.sol` is intentionally large, interaction-heavy, and intentionally buggy while still compiling and deploying under Foundry.
-- `src/ContractA.sol` also imports helper modules in `src/modules/` so the dependency graph extends beyond a single file.
+- `src/ContractA.sol` also imports helper modules in `src/modules/`, but the runtime call chain stays shallow: `ContractB -> ContractA -> module`.
 - `src/ContractB.sol` now inherits from `ContractA` and exposes explicit wrapper functions that call `super`, which is useful for scanners that reason at the function level.
 
 The intended experiment is:
@@ -31,6 +31,7 @@ The intended experiment is:
 - unrestricted bookkeeping mutation in `allocateReward`, `batchCredit`, `migrateLedger`, and multiple vault/campaign flows
 - insecure randomness in `pickLuckyUser`
 - interaction-heavy vault, strategy, proposal, campaign, payment-stream, and synthetic route logic
+- larger source-heavy helper logic in `ContractA` and in the imported math/risk modules
 
 `ContractB` includes:
 
