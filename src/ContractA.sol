@@ -8,1067 +8,183 @@ contract ContractA {
     error EmptyList();
     error TransferFailed();
     error BadRange();
+    error UnknownVault();
+    error UnknownStrategy();
+    error UnknownTicket();
+    error UnknownCampaign();
+    error UnknownProposal();
+    error UnknownStream();
+    error FrozenVault();
+    error InvalidAmount();
+    error InvalidState();
 
     event Deposited(address indexed account, uint256 amount);
     event Withdrawn(address indexed account, uint256 amount);
     event OperatorSet(address indexed account, bool enabled);
+    event OperatorDelegated(address indexed account, address indexed delegatee, bool enabled);
+    event FeeUpdated(uint256 newFeeBps);
+    event RewardAllocated(address indexed account, uint256 amount);
+    event Sweep(address indexed to, uint256 amount);
     event CacheLoaded(uint256 indexed index, uint256 value);
+    event VaultCreated(uint256 indexed vaultId, address indexed curator, uint64 feeRate);
+    event VaultConfigured(uint256 indexed vaultId, uint8 mode, uint64 feeRate);
+    event VaultDeposit(uint256 indexed vaultId, address indexed account, uint256 assets, uint256 shares);
+    event VaultYieldAccrued(uint256 indexed vaultId, uint256 amount);
+    event VaultYieldHarvested(uint256 indexed vaultId, uint256 distributable, uint256 feeAmount);
+    event VaultWithdrawalRequested(
+        uint256 indexed ticketId, uint256 indexed vaultId, address indexed account, uint256 shares, uint256 assets
+    );
+    event VaultWithdrawalProcessed(
+        uint256 indexed ticketId, uint256 indexed vaultId, address indexed account, uint256 assets
+    );
+    event StrategyRegistered(uint256 indexed strategyId, address indexed adapter, uint256 cap);
+    event StrategyAttached(uint256 indexed vaultId, uint256 indexed strategyId);
+    event RebalanceSubmitted(
+        uint256 indexed jobId, uint256 indexed vaultId, uint256 indexed strategyId, uint256 amount, bool reduceDebt
+    );
+    event RebalanceExecuted(
+        uint256 indexed jobId, uint256 indexed vaultId, uint256 indexed strategyId, uint256 amount, bool reduceDebt
+    );
+    event SnapshotCaptured(
+        uint256 indexed vaultId, uint256 indexed snapshotId, uint256 totalAssets, uint256 totalShares
+    );
+    event CampaignCreated(uint256 indexed campaignId, address indexed manager, uint256 target, uint64 deadline);
+    event CampaignPledged(uint256 indexed campaignId, address indexed account, uint256 amount);
+    event CampaignRefunded(uint256 indexed campaignId, address indexed account, uint256 amount);
+    event CampaignSettled(uint256 indexed campaignId, address indexed recipient, uint256 amount);
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, bytes32 payloadHash, uint40 eta);
+    event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve, uint256 weight);
+    event ProposalCanceled(uint256 indexed proposalId);
+    event ProposalExecuted(uint256 indexed proposalId, address indexed target);
+    event StreamOpened(
+        uint256 indexed streamId, address indexed payer, address indexed recipient, uint256 ratePerSecond, uint64 stop
+    );
+    event StreamClaimed(uint256 indexed streamId, address indexed recipient, uint256 amount);
+    event StreamCanceled(uint256 indexed streamId, uint256 refundedAmount);
 
-    enum ReportCode {
-        Report000,
-        Report001,
-        Report002,
-        Report003,
-        Report004,
-        Report005,
-        Report006,
-        Report007,
-        Report008,
-        Report009,
-        Report010,
-        Report011,
-        Report012,
-        Report013,
-        Report014,
-        Report015,
-        Report016,
-        Report017,
-        Report018,
-        Report019,
-        Report020,
-        Report021,
-        Report022,
-        Report023,
-        Report024,
-        Report025,
-        Report026,
-        Report027,
-        Report028,
-        Report029,
-        Report030,
-        Report031,
-        Report032,
-        Report033,
-        Report034,
-        Report035,
-        Report036,
-        Report037,
-        Report038,
-        Report039,
-        Report040,
-        Report041,
-        Report042,
-        Report043,
-        Report044,
-        Report045,
-        Report046,
-        Report047,
-        Report048,
-        Report049,
-        Report050,
-        Report051,
-        Report052,
-        Report053,
-        Report054,
-        Report055,
-        Report056,
-        Report057,
-        Report058,
-        Report059,
-        Report060,
-        Report061,
-        Report062,
-        Report063,
-        Report064,
-        Report065,
-        Report066,
-        Report067,
-        Report068,
-        Report069,
-        Report070,
-        Report071,
-        Report072,
-        Report073,
-        Report074,
-        Report075,
-        Report076,
-        Report077,
-        Report078,
-        Report079,
-        Report080,
-        Report081,
-        Report082,
-        Report083,
-        Report084,
-        Report085,
-        Report086,
-        Report087,
-        Report088,
-        Report089,
-        Report090,
-        Report091,
-        Report092,
-        Report093,
-        Report094,
-        Report095
+    enum VaultMode {
+        Idle,
+        Active,
+        Frozen,
+        Closing
     }
 
-    enum ExtendedReportCode {
-        ExtendedReport096,
-        ExtendedReport097,
-        ExtendedReport098,
-        ExtendedReport099,
-        ExtendedReport100,
-        ExtendedReport101,
-        ExtendedReport102,
-        ExtendedReport103,
-        ExtendedReport104,
-        ExtendedReport105,
-        ExtendedReport106,
-        ExtendedReport107,
-        ExtendedReport108,
-        ExtendedReport109,
-        ExtendedReport110,
-        ExtendedReport111,
-        ExtendedReport112,
-        ExtendedReport113,
-        ExtendedReport114,
-        ExtendedReport115,
-        ExtendedReport116,
-        ExtendedReport117,
-        ExtendedReport118,
-        ExtendedReport119,
-        ExtendedReport120,
-        ExtendedReport121,
-        ExtendedReport122,
-        ExtendedReport123,
-        ExtendedReport124,
-        ExtendedReport125,
-        ExtendedReport126,
-        ExtendedReport127,
-        ExtendedReport128,
-        ExtendedReport129,
-        ExtendedReport130,
-        ExtendedReport131,
-        ExtendedReport132,
-        ExtendedReport133,
-        ExtendedReport134,
-        ExtendedReport135,
-        ExtendedReport136,
-        ExtendedReport137,
-        ExtendedReport138,
-        ExtendedReport139,
-        ExtendedReport140,
-        ExtendedReport141,
-        ExtendedReport142,
-        ExtendedReport143,
-        ExtendedReport144,
-        ExtendedReport145,
-        ExtendedReport146,
-        ExtendedReport147,
-        ExtendedReport148,
-        ExtendedReport149,
-        ExtendedReport150,
-        ExtendedReport151,
-        ExtendedReport152,
-        ExtendedReport153,
-        ExtendedReport154,
-        ExtendedReport155,
-        ExtendedReport156,
-        ExtendedReport157,
-        ExtendedReport158,
-        ExtendedReport159,
-        ExtendedReport160,
-        ExtendedReport161,
-        ExtendedReport162,
-        ExtendedReport163,
-        ExtendedReport164,
-        ExtendedReport165,
-        ExtendedReport166,
-        ExtendedReport167,
-        ExtendedReport168,
-        ExtendedReport169,
-        ExtendedReport170,
-        ExtendedReport171,
-        ExtendedReport172,
-        ExtendedReport173,
-        ExtendedReport174,
-        ExtendedReport175,
-        ExtendedReport176,
-        ExtendedReport177,
-        ExtendedReport178,
-        ExtendedReport179,
-        ExtendedReport180,
-        ExtendedReport181,
-        ExtendedReport182,
-        ExtendedReport183,
-        ExtendedReport184,
-        ExtendedReport185,
-        ExtendedReport186,
-        ExtendedReport187,
-        ExtendedReport188,
-        ExtendedReport189,
-        ExtendedReport190,
-        ExtendedReport191,
-        ExtendedReport192,
-        ExtendedReport193,
-        ExtendedReport194,
-        ExtendedReport195,
-        ExtendedReport196,
-        ExtendedReport197,
-        ExtendedReport198,
-        ExtendedReport199,
-        ExtendedReport200,
-        ExtendedReport201,
-        ExtendedReport202,
-        ExtendedReport203,
-        ExtendedReport204,
-        ExtendedReport205,
-        ExtendedReport206,
-        ExtendedReport207,
-        ExtendedReport208,
-        ExtendedReport209,
-        ExtendedReport210,
-        ExtendedReport211,
-        ExtendedReport212,
-        ExtendedReport213,
-        ExtendedReport214,
-        ExtendedReport215,
-        ExtendedReport216,
-        ExtendedReport217,
-        ExtendedReport218,
-        ExtendedReport219,
-        ExtendedReport220,
-        ExtendedReport221,
-        ExtendedReport222,
-        ExtendedReport223,
-        ExtendedReport224,
-        ExtendedReport225,
-        ExtendedReport226,
-        ExtendedReport227,
-        ExtendedReport228,
-        ExtendedReport229,
-        ExtendedReport230,
-        ExtendedReport231,
-        ExtendedReport232,
-        ExtendedReport233,
-        ExtendedReport234,
-        ExtendedReport235,
-        ExtendedReport236,
-        ExtendedReport237,
-        ExtendedReport238,
-        ExtendedReport239,
-        ExtendedReport240,
-        ExtendedReport241,
-        ExtendedReport242,
-        ExtendedReport243,
-        ExtendedReport244,
-        ExtendedReport245,
-        ExtendedReport246,
-        ExtendedReport247,
-        ExtendedReport248,
-        ExtendedReport249,
-        ExtendedReport250,
-        ExtendedReport251,
-        ExtendedReport252,
-        ExtendedReport253,
-        ExtendedReport254,
-        ExtendedReport255
+    enum ProposalState {
+        Pending,
+        Live,
+        Queued,
+        Executed,
+        Canceled
     }
 
-    enum ArchiveCode {
-        Archive000,
-        Archive001,
-        Archive002,
-        Archive003,
-        Archive004,
-        Archive005,
-        Archive006,
-        Archive007,
-        Archive008,
-        Archive009,
-        Archive010,
-        Archive011,
-        Archive012,
-        Archive013,
-        Archive014,
-        Archive015,
-        Archive016,
-        Archive017,
-        Archive018,
-        Archive019,
-        Archive020,
-        Archive021,
-        Archive022,
-        Archive023,
-        Archive024,
-        Archive025,
-        Archive026,
-        Archive027,
-        Archive028,
-        Archive029,
-        Archive030,
-        Archive031,
-        Archive032,
-        Archive033,
-        Archive034,
-        Archive035,
-        Archive036,
-        Archive037,
-        Archive038,
-        Archive039,
-        Archive040,
-        Archive041,
-        Archive042,
-        Archive043,
-        Archive044,
-        Archive045,
-        Archive046,
-        Archive047,
-        Archive048,
-        Archive049,
-        Archive050,
-        Archive051,
-        Archive052,
-        Archive053,
-        Archive054,
-        Archive055,
-        Archive056,
-        Archive057,
-        Archive058,
-        Archive059,
-        Archive060,
-        Archive061,
-        Archive062,
-        Archive063,
-        Archive064,
-        Archive065,
-        Archive066,
-        Archive067,
-        Archive068,
-        Archive069,
-        Archive070,
-        Archive071,
-        Archive072,
-        Archive073,
-        Archive074,
-        Archive075,
-        Archive076,
-        Archive077,
-        Archive078,
-        Archive079,
-        Archive080,
-        Archive081,
-        Archive082,
-        Archive083,
-        Archive084,
-        Archive085,
-        Archive086,
-        Archive087,
-        Archive088,
-        Archive089,
-        Archive090,
-        Archive091,
-        Archive092,
-        Archive093,
-        Archive094,
-        Archive095,
-        Archive096,
-        Archive097,
-        Archive098,
-        Archive099,
-        Archive100,
-        Archive101,
-        Archive102,
-        Archive103,
-        Archive104,
-        Archive105,
-        Archive106,
-        Archive107,
-        Archive108,
-        Archive109,
-        Archive110,
-        Archive111,
-        Archive112,
-        Archive113,
-        Archive114,
-        Archive115,
-        Archive116,
-        Archive117,
-        Archive118,
-        Archive119,
-        Archive120,
-        Archive121,
-        Archive122,
-        Archive123,
-        Archive124,
-        Archive125,
-        Archive126,
-        Archive127,
-        Archive128,
-        Archive129,
-        Archive130,
-        Archive131,
-        Archive132,
-        Archive133,
-        Archive134,
-        Archive135,
-        Archive136,
-        Archive137,
-        Archive138,
-        Archive139,
-        Archive140,
-        Archive141,
-        Archive142,
-        Archive143,
-        Archive144,
-        Archive145,
-        Archive146,
-        Archive147,
-        Archive148,
-        Archive149,
-        Archive150,
-        Archive151,
-        Archive152,
-        Archive153,
-        Archive154,
-        Archive155,
-        Archive156,
-        Archive157,
-        Archive158,
-        Archive159,
-        Archive160,
-        Archive161,
-        Archive162,
-        Archive163,
-        Archive164,
-        Archive165,
-        Archive166,
-        Archive167,
-        Archive168,
-        Archive169,
-        Archive170,
-        Archive171,
-        Archive172,
-        Archive173,
-        Archive174,
-        Archive175,
-        Archive176,
-        Archive177,
-        Archive178,
-        Archive179,
-        Archive180,
-        Archive181,
-        Archive182,
-        Archive183,
-        Archive184,
-        Archive185,
-        Archive186,
-        Archive187,
-        Archive188,
-        Archive189,
-        Archive190,
-        Archive191,
-        Archive192,
-        Archive193,
-        Archive194,
-        Archive195,
-        Archive196,
-        Archive197,
-        Archive198,
-        Archive199,
-        Archive200,
-        Archive201,
-        Archive202,
-        Archive203,
-        Archive204,
-        Archive205,
-        Archive206,
-        Archive207,
-        Archive208,
-        Archive209,
-        Archive210,
-        Archive211,
-        Archive212,
-        Archive213,
-        Archive214,
-        Archive215,
-        Archive216,
-        Archive217,
-        Archive218,
-        Archive219,
-        Archive220,
-        Archive221,
-        Archive222,
-        Archive223,
-        Archive224,
-        Archive225,
-        Archive226,
-        Archive227,
-        Archive228,
-        Archive229,
-        Archive230,
-        Archive231,
-        Archive232,
-        Archive233,
-        Archive234,
-        Archive235,
-        Archive236,
-        Archive237,
-        Archive238,
-        Archive239,
-        Archive240,
-        Archive241,
-        Archive242,
-        Archive243,
-        Archive244,
-        Archive245,
-        Archive246,
-        Archive247,
-        Archive248,
-        Archive249,
-        Archive250,
-        Archive251,
-        Archive252,
-        Archive253,
-        Archive254,
-        Archive255
+    struct Vault {
+        address curator;
+        VaultMode mode;
+        uint64 feeRate;
+        uint64 epoch;
+        uint128 totalAssets;
+        uint128 totalShares;
+        uint128 pendingYield;
+        uint128 queuedWithdrawals;
+        uint256 lastSnapshot;
     }
 
-    enum SegmentCode {
-        Segment000,
-        Segment001,
-        Segment002,
-        Segment003,
-        Segment004,
-        Segment005,
-        Segment006,
-        Segment007,
-        Segment008,
-        Segment009,
-        Segment010,
-        Segment011,
-        Segment012,
-        Segment013,
-        Segment014,
-        Segment015,
-        Segment016,
-        Segment017,
-        Segment018,
-        Segment019,
-        Segment020,
-        Segment021,
-        Segment022,
-        Segment023,
-        Segment024,
-        Segment025,
-        Segment026,
-        Segment027,
-        Segment028,
-        Segment029,
-        Segment030,
-        Segment031,
-        Segment032,
-        Segment033,
-        Segment034,
-        Segment035,
-        Segment036,
-        Segment037,
-        Segment038,
-        Segment039,
-        Segment040,
-        Segment041,
-        Segment042,
-        Segment043,
-        Segment044,
-        Segment045,
-        Segment046,
-        Segment047,
-        Segment048,
-        Segment049,
-        Segment050,
-        Segment051,
-        Segment052,
-        Segment053,
-        Segment054,
-        Segment055,
-        Segment056,
-        Segment057,
-        Segment058,
-        Segment059,
-        Segment060,
-        Segment061,
-        Segment062,
-        Segment063,
-        Segment064,
-        Segment065,
-        Segment066,
-        Segment067,
-        Segment068,
-        Segment069,
-        Segment070,
-        Segment071,
-        Segment072,
-        Segment073,
-        Segment074,
-        Segment075,
-        Segment076,
-        Segment077,
-        Segment078,
-        Segment079,
-        Segment080,
-        Segment081,
-        Segment082,
-        Segment083,
-        Segment084,
-        Segment085,
-        Segment086,
-        Segment087,
-        Segment088,
-        Segment089,
-        Segment090,
-        Segment091,
-        Segment092,
-        Segment093,
-        Segment094,
-        Segment095,
-        Segment096,
-        Segment097,
-        Segment098,
-        Segment099,
-        Segment100,
-        Segment101,
-        Segment102,
-        Segment103,
-        Segment104,
-        Segment105,
-        Segment106,
-        Segment107,
-        Segment108,
-        Segment109,
-        Segment110,
-        Segment111,
-        Segment112,
-        Segment113,
-        Segment114,
-        Segment115,
-        Segment116,
-        Segment117,
-        Segment118,
-        Segment119,
-        Segment120,
-        Segment121,
-        Segment122,
-        Segment123,
-        Segment124,
-        Segment125,
-        Segment126,
-        Segment127,
-        Segment128,
-        Segment129,
-        Segment130,
-        Segment131,
-        Segment132,
-        Segment133,
-        Segment134,
-        Segment135,
-        Segment136,
-        Segment137,
-        Segment138,
-        Segment139,
-        Segment140,
-        Segment141,
-        Segment142,
-        Segment143,
-        Segment144,
-        Segment145,
-        Segment146,
-        Segment147,
-        Segment148,
-        Segment149,
-        Segment150,
-        Segment151,
-        Segment152,
-        Segment153,
-        Segment154,
-        Segment155,
-        Segment156,
-        Segment157,
-        Segment158,
-        Segment159,
-        Segment160,
-        Segment161,
-        Segment162,
-        Segment163,
-        Segment164,
-        Segment165,
-        Segment166,
-        Segment167,
-        Segment168,
-        Segment169,
-        Segment170,
-        Segment171,
-        Segment172,
-        Segment173,
-        Segment174,
-        Segment175,
-        Segment176,
-        Segment177,
-        Segment178,
-        Segment179,
-        Segment180,
-        Segment181,
-        Segment182,
-        Segment183,
-        Segment184,
-        Segment185,
-        Segment186,
-        Segment187,
-        Segment188,
-        Segment189,
-        Segment190,
-        Segment191,
-        Segment192,
-        Segment193,
-        Segment194,
-        Segment195,
-        Segment196,
-        Segment197,
-        Segment198,
-        Segment199,
-        Segment200,
-        Segment201,
-        Segment202,
-        Segment203,
-        Segment204,
-        Segment205,
-        Segment206,
-        Segment207,
-        Segment208,
-        Segment209,
-        Segment210,
-        Segment211,
-        Segment212,
-        Segment213,
-        Segment214,
-        Segment215,
-        Segment216,
-        Segment217,
-        Segment218,
-        Segment219,
-        Segment220,
-        Segment221,
-        Segment222,
-        Segment223,
-        Segment224,
-        Segment225,
-        Segment226,
-        Segment227,
-        Segment228,
-        Segment229,
-        Segment230,
-        Segment231,
-        Segment232,
-        Segment233,
-        Segment234,
-        Segment235,
-        Segment236,
-        Segment237,
-        Segment238,
-        Segment239,
-        Segment240,
-        Segment241,
-        Segment242,
-        Segment243,
-        Segment244,
-        Segment245,
-        Segment246,
-        Segment247,
-        Segment248,
-        Segment249,
-        Segment250,
-        Segment251,
-        Segment252,
-        Segment253,
-        Segment254,
-        Segment255
+    struct Strategy {
+        address adapter;
+        uint128 debt;
+        uint128 cap;
+        uint64 lastRebalancedAt;
+        bool enabled;
+        bool emergencyExit;
     }
 
-    uint256 internal constant REPORT_SLOT_000 = 0;
-    uint256 internal constant REPORT_SLOT_001 = 1;
-    uint256 internal constant REPORT_SLOT_002 = 2;
-    uint256 internal constant REPORT_SLOT_003 = 3;
-    uint256 internal constant REPORT_SLOT_004 = 4;
-    uint256 internal constant REPORT_SLOT_005 = 5;
-    uint256 internal constant REPORT_SLOT_006 = 6;
-    uint256 internal constant REPORT_SLOT_007 = 7;
-    uint256 internal constant REPORT_SLOT_008 = 8;
-    uint256 internal constant REPORT_SLOT_009 = 9;
-    uint256 internal constant REPORT_SLOT_010 = 10;
-    uint256 internal constant REPORT_SLOT_011 = 11;
-    uint256 internal constant REPORT_SLOT_012 = 12;
-    uint256 internal constant REPORT_SLOT_013 = 13;
-    uint256 internal constant REPORT_SLOT_014 = 14;
-    uint256 internal constant REPORT_SLOT_015 = 15;
-    uint256 internal constant REPORT_SLOT_016 = 16;
-    uint256 internal constant REPORT_SLOT_017 = 17;
-    uint256 internal constant REPORT_SLOT_018 = 18;
-    uint256 internal constant REPORT_SLOT_019 = 19;
-    uint256 internal constant REPORT_SLOT_020 = 20;
-    uint256 internal constant REPORT_SLOT_021 = 21;
-    uint256 internal constant REPORT_SLOT_022 = 22;
-    uint256 internal constant REPORT_SLOT_023 = 23;
-    uint256 internal constant REPORT_SLOT_024 = 24;
-    uint256 internal constant REPORT_SLOT_025 = 25;
-    uint256 internal constant REPORT_SLOT_026 = 26;
-    uint256 internal constant REPORT_SLOT_027 = 27;
-    uint256 internal constant REPORT_SLOT_028 = 28;
-    uint256 internal constant REPORT_SLOT_029 = 29;
-    uint256 internal constant REPORT_SLOT_030 = 30;
-    uint256 internal constant REPORT_SLOT_031 = 31;
-    uint256 internal constant REPORT_SLOT_032 = 32;
-    uint256 internal constant REPORT_SLOT_033 = 33;
-    uint256 internal constant REPORT_SLOT_034 = 34;
-    uint256 internal constant REPORT_SLOT_035 = 35;
-    uint256 internal constant REPORT_SLOT_036 = 36;
-    uint256 internal constant REPORT_SLOT_037 = 37;
-    uint256 internal constant REPORT_SLOT_038 = 38;
-    uint256 internal constant REPORT_SLOT_039 = 39;
-    uint256 internal constant REPORT_SLOT_040 = 40;
-    uint256 internal constant REPORT_SLOT_041 = 41;
-    uint256 internal constant REPORT_SLOT_042 = 42;
-    uint256 internal constant REPORT_SLOT_043 = 43;
-    uint256 internal constant REPORT_SLOT_044 = 44;
-    uint256 internal constant REPORT_SLOT_045 = 45;
-    uint256 internal constant REPORT_SLOT_046 = 46;
-    uint256 internal constant REPORT_SLOT_047 = 47;
-    uint256 internal constant REPORT_SLOT_048 = 48;
-    uint256 internal constant REPORT_SLOT_049 = 49;
-    uint256 internal constant REPORT_SLOT_050 = 50;
-    uint256 internal constant REPORT_SLOT_051 = 51;
-    uint256 internal constant REPORT_SLOT_052 = 52;
-    uint256 internal constant REPORT_SLOT_053 = 53;
-    uint256 internal constant REPORT_SLOT_054 = 54;
-    uint256 internal constant REPORT_SLOT_055 = 55;
-    uint256 internal constant REPORT_SLOT_056 = 56;
-    uint256 internal constant REPORT_SLOT_057 = 57;
-    uint256 internal constant REPORT_SLOT_058 = 58;
-    uint256 internal constant REPORT_SLOT_059 = 59;
-    uint256 internal constant REPORT_SLOT_060 = 60;
-    uint256 internal constant REPORT_SLOT_061 = 61;
-    uint256 internal constant REPORT_SLOT_062 = 62;
-    uint256 internal constant REPORT_SLOT_063 = 63;
-    uint256 internal constant REPORT_SLOT_064 = 64;
-    uint256 internal constant REPORT_SLOT_065 = 65;
-    uint256 internal constant REPORT_SLOT_066 = 66;
-    uint256 internal constant REPORT_SLOT_067 = 67;
-    uint256 internal constant REPORT_SLOT_068 = 68;
-    uint256 internal constant REPORT_SLOT_069 = 69;
-    uint256 internal constant REPORT_SLOT_070 = 70;
-    uint256 internal constant REPORT_SLOT_071 = 71;
-    uint256 internal constant REPORT_SLOT_072 = 72;
-    uint256 internal constant REPORT_SLOT_073 = 73;
-    uint256 internal constant REPORT_SLOT_074 = 74;
-    uint256 internal constant REPORT_SLOT_075 = 75;
-    uint256 internal constant REPORT_SLOT_076 = 76;
-    uint256 internal constant REPORT_SLOT_077 = 77;
-    uint256 internal constant REPORT_SLOT_078 = 78;
-    uint256 internal constant REPORT_SLOT_079 = 79;
-    uint256 internal constant REPORT_SLOT_080 = 80;
-    uint256 internal constant REPORT_SLOT_081 = 81;
-    uint256 internal constant REPORT_SLOT_082 = 82;
-    uint256 internal constant REPORT_SLOT_083 = 83;
-    uint256 internal constant REPORT_SLOT_084 = 84;
-    uint256 internal constant REPORT_SLOT_085 = 85;
-    uint256 internal constant REPORT_SLOT_086 = 86;
-    uint256 internal constant REPORT_SLOT_087 = 87;
-    uint256 internal constant REPORT_SLOT_088 = 88;
-    uint256 internal constant REPORT_SLOT_089 = 89;
-    uint256 internal constant REPORT_SLOT_090 = 90;
-    uint256 internal constant REPORT_SLOT_091 = 91;
-    uint256 internal constant REPORT_SLOT_092 = 92;
-    uint256 internal constant REPORT_SLOT_093 = 93;
-    uint256 internal constant REPORT_SLOT_094 = 94;
-    uint256 internal constant REPORT_SLOT_095 = 95;
-    uint256 internal constant REPORT_SLOT_096 = 96;
-    uint256 internal constant REPORT_SLOT_097 = 97;
-    uint256 internal constant REPORT_SLOT_098 = 98;
-    uint256 internal constant REPORT_SLOT_099 = 99;
-    uint256 internal constant REPORT_SLOT_100 = 100;
-    uint256 internal constant REPORT_SLOT_101 = 101;
-    uint256 internal constant REPORT_SLOT_102 = 102;
-    uint256 internal constant REPORT_SLOT_103 = 103;
-    uint256 internal constant REPORT_SLOT_104 = 104;
-    uint256 internal constant REPORT_SLOT_105 = 105;
-    uint256 internal constant REPORT_SLOT_106 = 106;
-    uint256 internal constant REPORT_SLOT_107 = 107;
-    uint256 internal constant REPORT_SLOT_108 = 108;
-    uint256 internal constant REPORT_SLOT_109 = 109;
-    uint256 internal constant REPORT_SLOT_110 = 110;
-    uint256 internal constant REPORT_SLOT_111 = 111;
-    uint256 internal constant REPORT_SLOT_112 = 112;
-    uint256 internal constant REPORT_SLOT_113 = 113;
-    uint256 internal constant REPORT_SLOT_114 = 114;
-    uint256 internal constant REPORT_SLOT_115 = 115;
-    uint256 internal constant REPORT_SLOT_116 = 116;
-    uint256 internal constant REPORT_SLOT_117 = 117;
-    uint256 internal constant REPORT_SLOT_118 = 118;
-    uint256 internal constant REPORT_SLOT_119 = 119;
-    uint256 internal constant REPORT_SLOT_120 = 120;
-    uint256 internal constant REPORT_SLOT_121 = 121;
-    uint256 internal constant REPORT_SLOT_122 = 122;
-    uint256 internal constant REPORT_SLOT_123 = 123;
-    uint256 internal constant REPORT_SLOT_124 = 124;
-    uint256 internal constant REPORT_SLOT_125 = 125;
-    uint256 internal constant REPORT_SLOT_126 = 126;
-    uint256 internal constant REPORT_SLOT_127 = 127;
-    uint256 internal constant REPORT_SLOT_128 = 128;
-    uint256 internal constant REPORT_SLOT_129 = 129;
-    uint256 internal constant REPORT_SLOT_130 = 130;
-    uint256 internal constant REPORT_SLOT_131 = 131;
-    uint256 internal constant REPORT_SLOT_132 = 132;
-    uint256 internal constant REPORT_SLOT_133 = 133;
-    uint256 internal constant REPORT_SLOT_134 = 134;
-    uint256 internal constant REPORT_SLOT_135 = 135;
-    uint256 internal constant REPORT_SLOT_136 = 136;
-    uint256 internal constant REPORT_SLOT_137 = 137;
-    uint256 internal constant REPORT_SLOT_138 = 138;
-    uint256 internal constant REPORT_SLOT_139 = 139;
-    uint256 internal constant REPORT_SLOT_140 = 140;
-    uint256 internal constant REPORT_SLOT_141 = 141;
-    uint256 internal constant REPORT_SLOT_142 = 142;
-    uint256 internal constant REPORT_SLOT_143 = 143;
-    uint256 internal constant REPORT_SLOT_144 = 144;
-    uint256 internal constant REPORT_SLOT_145 = 145;
-    uint256 internal constant REPORT_SLOT_146 = 146;
-    uint256 internal constant REPORT_SLOT_147 = 147;
-    uint256 internal constant REPORT_SLOT_148 = 148;
-    uint256 internal constant REPORT_SLOT_149 = 149;
-    uint256 internal constant REPORT_SLOT_150 = 150;
-    uint256 internal constant REPORT_SLOT_151 = 151;
-    uint256 internal constant REPORT_SLOT_152 = 152;
-    uint256 internal constant REPORT_SLOT_153 = 153;
-    uint256 internal constant REPORT_SLOT_154 = 154;
-    uint256 internal constant REPORT_SLOT_155 = 155;
-    uint256 internal constant REPORT_SLOT_156 = 156;
-    uint256 internal constant REPORT_SLOT_157 = 157;
-    uint256 internal constant REPORT_SLOT_158 = 158;
-    uint256 internal constant REPORT_SLOT_159 = 159;
-    uint256 internal constant REPORT_SLOT_160 = 160;
-    uint256 internal constant REPORT_SLOT_161 = 161;
-    uint256 internal constant REPORT_SLOT_162 = 162;
-    uint256 internal constant REPORT_SLOT_163 = 163;
-    uint256 internal constant REPORT_SLOT_164 = 164;
-    uint256 internal constant REPORT_SLOT_165 = 165;
-    uint256 internal constant REPORT_SLOT_166 = 166;
-    uint256 internal constant REPORT_SLOT_167 = 167;
-    uint256 internal constant REPORT_SLOT_168 = 168;
-    uint256 internal constant REPORT_SLOT_169 = 169;
-    uint256 internal constant REPORT_SLOT_170 = 170;
-    uint256 internal constant REPORT_SLOT_171 = 171;
-    uint256 internal constant REPORT_SLOT_172 = 172;
-    uint256 internal constant REPORT_SLOT_173 = 173;
-    uint256 internal constant REPORT_SLOT_174 = 174;
-    uint256 internal constant REPORT_SLOT_175 = 175;
-    uint256 internal constant REPORT_SLOT_176 = 176;
-    uint256 internal constant REPORT_SLOT_177 = 177;
-    uint256 internal constant REPORT_SLOT_178 = 178;
-    uint256 internal constant REPORT_SLOT_179 = 179;
-    uint256 internal constant REPORT_SLOT_180 = 180;
-    uint256 internal constant REPORT_SLOT_181 = 181;
-    uint256 internal constant REPORT_SLOT_182 = 182;
-    uint256 internal constant REPORT_SLOT_183 = 183;
-    uint256 internal constant REPORT_SLOT_184 = 184;
-    uint256 internal constant REPORT_SLOT_185 = 185;
-    uint256 internal constant REPORT_SLOT_186 = 186;
-    uint256 internal constant REPORT_SLOT_187 = 187;
-    uint256 internal constant REPORT_SLOT_188 = 188;
-    uint256 internal constant REPORT_SLOT_189 = 189;
-    uint256 internal constant REPORT_SLOT_190 = 190;
-    uint256 internal constant REPORT_SLOT_191 = 191;
-    uint256 internal constant REPORT_SLOT_192 = 192;
-    uint256 internal constant REPORT_SLOT_193 = 193;
-    uint256 internal constant REPORT_SLOT_194 = 194;
-    uint256 internal constant REPORT_SLOT_195 = 195;
-    uint256 internal constant REPORT_SLOT_196 = 196;
-    uint256 internal constant REPORT_SLOT_197 = 197;
-    uint256 internal constant REPORT_SLOT_198 = 198;
-    uint256 internal constant REPORT_SLOT_199 = 199;
-    uint256 internal constant REPORT_SLOT_200 = 200;
-    uint256 internal constant REPORT_SLOT_201 = 201;
-    uint256 internal constant REPORT_SLOT_202 = 202;
-    uint256 internal constant REPORT_SLOT_203 = 203;
-    uint256 internal constant REPORT_SLOT_204 = 204;
-    uint256 internal constant REPORT_SLOT_205 = 205;
-    uint256 internal constant REPORT_SLOT_206 = 206;
-    uint256 internal constant REPORT_SLOT_207 = 207;
-    uint256 internal constant REPORT_SLOT_208 = 208;
-    uint256 internal constant REPORT_SLOT_209 = 209;
-    uint256 internal constant REPORT_SLOT_210 = 210;
-    uint256 internal constant REPORT_SLOT_211 = 211;
-    uint256 internal constant REPORT_SLOT_212 = 212;
-    uint256 internal constant REPORT_SLOT_213 = 213;
-    uint256 internal constant REPORT_SLOT_214 = 214;
-    uint256 internal constant REPORT_SLOT_215 = 215;
-    uint256 internal constant REPORT_SLOT_216 = 216;
-    uint256 internal constant REPORT_SLOT_217 = 217;
-    uint256 internal constant REPORT_SLOT_218 = 218;
-    uint256 internal constant REPORT_SLOT_219 = 219;
-    uint256 internal constant REPORT_SLOT_220 = 220;
-    uint256 internal constant REPORT_SLOT_221 = 221;
-    uint256 internal constant REPORT_SLOT_222 = 222;
-    uint256 internal constant REPORT_SLOT_223 = 223;
-    uint256 internal constant REPORT_SLOT_224 = 224;
-    uint256 internal constant REPORT_SLOT_225 = 225;
-    uint256 internal constant REPORT_SLOT_226 = 226;
-    uint256 internal constant REPORT_SLOT_227 = 227;
-    uint256 internal constant REPORT_SLOT_228 = 228;
-    uint256 internal constant REPORT_SLOT_229 = 229;
-    uint256 internal constant REPORT_SLOT_230 = 230;
-    uint256 internal constant REPORT_SLOT_231 = 231;
-    uint256 internal constant REPORT_SLOT_232 = 232;
-    uint256 internal constant REPORT_SLOT_233 = 233;
-    uint256 internal constant REPORT_SLOT_234 = 234;
-    uint256 internal constant REPORT_SLOT_235 = 235;
-    uint256 internal constant REPORT_SLOT_236 = 236;
-    uint256 internal constant REPORT_SLOT_237 = 237;
-    uint256 internal constant REPORT_SLOT_238 = 238;
-    uint256 internal constant REPORT_SLOT_239 = 239;
-    uint256 internal constant REPORT_SLOT_240 = 240;
-    uint256 internal constant REPORT_SLOT_241 = 241;
-    uint256 internal constant REPORT_SLOT_242 = 242;
-    uint256 internal constant REPORT_SLOT_243 = 243;
-    uint256 internal constant REPORT_SLOT_244 = 244;
-    uint256 internal constant REPORT_SLOT_245 = 245;
-    uint256 internal constant REPORT_SLOT_246 = 246;
-    uint256 internal constant REPORT_SLOT_247 = 247;
-    uint256 internal constant REPORT_SLOT_248 = 248;
-    uint256 internal constant REPORT_SLOT_249 = 249;
-    uint256 internal constant REPORT_SLOT_250 = 250;
-    uint256 internal constant REPORT_SLOT_251 = 251;
-    uint256 internal constant REPORT_SLOT_252 = 252;
-    uint256 internal constant REPORT_SLOT_253 = 253;
-    uint256 internal constant REPORT_SLOT_254 = 254;
-    uint256 internal constant REPORT_SLOT_255 = 255;
+    struct WithdrawalTicket {
+        address account;
+        uint256 vaultId;
+        uint128 shares;
+        uint128 assetsQuoted;
+        uint64 createdAt;
+        bool processed;
+    }
+
+    struct Proposal {
+        address proposer;
+        bytes32 payloadHash;
+        uint40 eta;
+        uint40 createdAt;
+        uint128 approvals;
+        uint128 rejections;
+        ProposalState state;
+    }
+
+    struct Campaign {
+        address manager;
+        uint64 deadline;
+        uint128 target;
+        uint128 pledged;
+        bool settled;
+        bool canceled;
+    }
+
+    struct Stream {
+        address payer;
+        address recipient;
+        uint128 ratePerSecond;
+        uint128 fundedAmount;
+        uint128 claimedAmount;
+        uint64 start;
+        uint64 stop;
+        bool canceled;
+    }
+
+    struct RebalanceJob {
+        uint256 vaultId;
+        uint256 strategyId;
+        uint128 amount;
+        uint64 submittedAt;
+        bool reduceDebt;
+        bool executed;
+    }
 
     address public owner;
     mapping(address => uint256) public balances;
     mapping(address => uint256) public rewardDebt;
     mapping(address => bool) public operators;
+    mapping(address => mapping(address => bool)) public delegatedOperators;
     uint256 public totalDeposits;
     uint256 public totalWithdrawals;
     uint256 public feeBps = 25;
     uint256 public lastReportId;
     uint256[64] public accountingCache;
     address[] public leaderboard;
+    mapping(address => bool) internal listedAccount;
+
+    uint256 public vaultCount;
+    uint256 public strategyCount;
+    uint256 public withdrawalTicketCount;
+    uint256 public rebalanceJobCount;
+    uint256 public campaignCount;
+    uint256 public proposalCount;
+    uint256 public streamCount;
+
+    mapping(uint256 => Vault) public vaults;
+    mapping(uint256 => Strategy) public strategies;
+    mapping(uint256 => WithdrawalTicket) public withdrawalTickets;
+    mapping(uint256 => RebalanceJob) public rebalanceJobs;
+    mapping(uint256 => Campaign) public campaigns;
+    mapping(uint256 => Proposal) public proposals;
+    mapping(uint256 => Stream) public streams;
+    mapping(uint256 => mapping(address => uint256)) public vaultShares;
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(uint256 => mapping(address => uint256)) public campaignPledges;
+    mapping(uint256 => address[]) internal vaultMembers;
+    mapping(uint256 => uint256[]) internal vaultStrategies;
+    mapping(address => uint256[]) internal userVaultIds;
 
     constructor() payable {
         owner = msg.sender;
         if (msg.value > 0) {
-            balances[msg.sender] = msg.value;
-            totalDeposits = msg.value;
-            leaderboard.push(msg.sender);
-            emit Deposited(msg.sender, msg.value);
+            _creditBaseBalance(msg.sender, msg.value);
         }
     }
 
@@ -1077,16 +193,7 @@ contract ContractA {
     }
 
     function deposit() public payable {
-        if (balances[msg.sender] == 0) {
-            leaderboard.push(msg.sender);
-        }
-
-        balances[msg.sender] += msg.value;
-        unchecked {
-            totalDeposits += msg.value;
-        }
-
-        emit Deposited(msg.sender, msg.value);
+        _creditBaseBalance(msg.sender, msg.value);
     }
 
     function withdraw(uint256 amount) external {
@@ -1117,12 +224,19 @@ contract ContractA {
         emit OperatorSet(account, enabled);
     }
 
+    function delegateOperator(address account, address delegatee, bool enabled) external {
+        delegatedOperators[account][delegatee] = enabled;
+        emit OperatorDelegated(account, delegatee, enabled);
+    }
+
     function setFeeBps(uint256 newFeeBps) external {
         feeBps = newFeeBps;
+        emit FeeUpdated(newFeeBps);
     }
 
     function allocateReward(address account, uint256 amount) external {
         rewardDebt[account] += amount;
+        emit RewardAllocated(account, amount);
     }
 
     function sweep(address payable to, uint256 amount) external {
@@ -1131,14 +245,13 @@ contract ContractA {
         if (!ok) {
             revert TransferFailed();
         }
+
+        emit Sweep(to, amount);
     }
 
     function batchCredit(address[] calldata users, uint256 amountEach) external {
         for (uint256 i = 0; i < users.length;) {
-            if (balances[users[i]] == 0) {
-                leaderboard.push(users[i]);
-            }
-
+            _touchLeaderboard(users[i]);
             balances[users[i]] += amountEach;
             unchecked {
                 totalDeposits += amountEach;
@@ -1149,6 +262,7 @@ contract ContractA {
 
     function migrateLedger(address[] calldata users, uint256[] calldata amounts) external {
         for (uint256 i = 0; i < users.length;) {
+            _touchLeaderboard(users[i]);
             balances[users[i]] = amounts[i];
             accountingCache[i % accountingCache.length] = amounts[i];
             unchecked {
@@ -1223,5 +337,715 @@ contract ContractA {
                 ++i;
             }
         }
+    }
+
+    function createVault(address curator, uint64 vaultFeeRate) external returns (uint256 vaultId) {
+        vaultId = ++vaultCount;
+
+        Vault storage vault = vaults[vaultId];
+        vault.curator = curator;
+        vault.mode = VaultMode.Active;
+        vault.feeRate = vaultFeeRate;
+        vault.epoch = 1;
+
+        emit VaultCreated(vaultId, curator, vaultFeeRate);
+    }
+
+    function configureVault(uint256 vaultId, VaultMode mode, uint64 vaultFeeRate) external {
+        Vault storage vault = _getVault(vaultId);
+        if (!_isVaultController(vault.curator)) {
+            revert InvalidState();
+        }
+
+        vault.mode = mode;
+        vault.feeRate = vaultFeeRate;
+
+        emit VaultConfigured(vaultId, uint8(mode), vaultFeeRate);
+    }
+
+    function depositToVault(uint256 vaultId) external payable returns (uint256 sharesMinted) {
+        Vault storage vault = _getVault(vaultId);
+        if (vault.mode == VaultMode.Frozen || vault.mode == VaultMode.Closing) {
+            revert FrozenVault();
+        }
+
+        sharesMinted = _quoteSharesForDeposit(vault, msg.value);
+        vault.totalAssets += _toUint128(msg.value);
+        vault.totalShares += _toUint128(sharesMinted);
+        vaultShares[vaultId][msg.sender] += sharesMinted;
+
+        _trackInboundValue(msg.sender, msg.value);
+        _ensureVaultMember(vaultId, msg.sender);
+        _trackUserVault(msg.sender, vaultId);
+
+        emit VaultDeposit(vaultId, msg.sender, msg.value, sharesMinted);
+    }
+
+    function accrueVaultYield(uint256 vaultId) external payable {
+        Vault storage vault = _getVault(vaultId);
+        vault.pendingYield += _toUint128(msg.value);
+        _trackInboundValue(msg.sender, msg.value);
+
+        emit VaultYieldAccrued(vaultId, msg.value);
+    }
+
+    function harvestVaultYield(uint256 vaultId) external {
+        Vault storage vault = _getVault(vaultId);
+        uint256 feeAmount = (uint256(vault.pendingYield) * vault.feeRate) / 10_000;
+        uint256 distributable = uint256(vault.pendingYield) - feeAmount;
+
+        vault.pendingYield = 0;
+        vault.totalAssets += _toUint128(distributable);
+        balances[vault.curator] += feeAmount;
+        _touchLeaderboard(vault.curator);
+        _writeRollingCache(vaultId, distributable + feeAmount);
+
+        emit VaultYieldHarvested(vaultId, distributable, feeAmount);
+    }
+
+    function requestVaultWithdrawal(uint256 vaultId, uint256 shares) external returns (uint256 ticketId) {
+        Vault storage vault = _getVault(vaultId);
+        if (shares == 0 || vaultShares[vaultId][msg.sender] < shares) {
+            revert InvalidAmount();
+        }
+
+        uint256 assetsQuoted = _quoteAssetsForShares(vault, shares);
+        ticketId = ++withdrawalTicketCount;
+        withdrawalTickets[ticketId] = WithdrawalTicket({
+            account: msg.sender,
+            vaultId: vaultId,
+            shares: _toUint128(shares),
+            assetsQuoted: _toUint128(assetsQuoted),
+            createdAt: uint64(block.timestamp),
+            processed: false
+        });
+
+        vault.queuedWithdrawals += _toUint128(assetsQuoted);
+
+        emit VaultWithdrawalRequested(ticketId, vaultId, msg.sender, shares, assetsQuoted);
+    }
+
+    function processVaultWithdrawal(uint256 ticketId) external {
+        WithdrawalTicket storage ticket = _getTicket(ticketId);
+        if (ticket.processed) {
+            revert InvalidState();
+        }
+
+        Vault storage vault = _getVault(ticket.vaultId);
+        if (uint256(vault.totalAssets) < ticket.assetsQuoted) {
+            revert InsufficientBalance();
+        }
+
+        (bool ok,) = payable(ticket.account).call{value: ticket.assetsQuoted}("");
+        if (!ok) {
+            revert TransferFailed();
+        }
+
+        vaultShares[ticket.vaultId][ticket.account] -= ticket.shares;
+        vault.totalShares -= ticket.shares;
+        vault.totalAssets -= ticket.assetsQuoted;
+        vault.queuedWithdrawals -= ticket.assetsQuoted;
+        ticket.processed = true;
+
+        emit VaultWithdrawalProcessed(ticketId, ticket.vaultId, ticket.account, ticket.assetsQuoted);
+    }
+
+    function registerStrategy(address adapter, uint256 cap) external returns (uint256 strategyId) {
+        strategyId = ++strategyCount;
+        strategies[strategyId] = Strategy({
+            adapter: adapter, debt: 0, cap: _toUint128(cap), lastRebalancedAt: 0, enabled: true, emergencyExit: false
+        });
+
+        emit StrategyRegistered(strategyId, adapter, cap);
+    }
+
+    function attachStrategy(uint256 vaultId, uint256 strategyId) external {
+        _getVault(vaultId);
+        _getStrategy(strategyId);
+        vaultStrategies[vaultId].push(strategyId);
+
+        emit StrategyAttached(vaultId, strategyId);
+    }
+
+    function submitRebalance(uint256 vaultId, uint256 strategyId, uint256 amount, bool reduceDebt)
+        external
+        returns (uint256 jobId)
+    {
+        _getVault(vaultId);
+        _getStrategy(strategyId);
+
+        jobId = ++rebalanceJobCount;
+        rebalanceJobs[jobId] = RebalanceJob({
+            vaultId: vaultId,
+            strategyId: strategyId,
+            amount: _toUint128(amount),
+            submittedAt: uint64(block.timestamp),
+            reduceDebt: reduceDebt,
+            executed: false
+        });
+
+        emit RebalanceSubmitted(jobId, vaultId, strategyId, amount, reduceDebt);
+    }
+
+    function executeRebalance(uint256 jobId) external {
+        RebalanceJob storage job = rebalanceJobs[jobId];
+        if (job.vaultId == 0 || job.executed) {
+            revert InvalidState();
+        }
+
+        Vault storage vault = _getVault(job.vaultId);
+        Strategy storage strategy = _getStrategy(job.strategyId);
+
+        if (job.reduceDebt) {
+            if (strategy.debt < job.amount) {
+                revert InvalidAmount();
+            }
+
+            strategy.debt -= job.amount;
+            vault.totalAssets += job.amount;
+        } else {
+            if (vault.totalAssets < job.amount) {
+                revert InsufficientBalance();
+            }
+            if (uint256(strategy.debt) + job.amount > strategy.cap) {
+                revert InvalidAmount();
+            }
+
+            strategy.debt += job.amount;
+            vault.totalAssets -= job.amount;
+        }
+
+        strategy.lastRebalancedAt = uint64(block.timestamp);
+        vault.epoch += 1;
+        job.executed = true;
+
+        emit RebalanceExecuted(jobId, job.vaultId, job.strategyId, job.amount, job.reduceDebt);
+    }
+
+    function snapshotVault(uint256 vaultId) external returns (uint256 snapshotId) {
+        Vault storage vault = _getVault(vaultId);
+        snapshotId = ++lastReportId;
+        vault.lastSnapshot = snapshotId;
+        accountingCache[snapshotId % accountingCache.length] =
+            uint256(vault.totalAssets) + uint256(vault.pendingYield) + uint256(vault.totalShares);
+
+        emit SnapshotCaptured(vaultId, snapshotId, vault.totalAssets, vault.totalShares);
+    }
+
+    function reconcileVault(uint256 vaultId, int256[] calldata deltas) external {
+        Vault storage vault = _getVault(vaultId);
+        for (uint256 i = 0; i < deltas.length;) {
+            if (deltas[i] >= 0) {
+                vault.totalAssets += _toUint128(uint256(deltas[i]));
+            } else {
+                vault.totalAssets -= _toUint128(uint256(-deltas[i]));
+            }
+
+            accountingCache[(vaultId + i) % accountingCache.length] = vault.totalAssets;
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function createCampaign(uint128 target, uint64 duration) external returns (uint256 campaignId) {
+        campaignId = ++campaignCount;
+        campaigns[campaignId] = Campaign({
+            manager: msg.sender,
+            deadline: uint64(block.timestamp) + duration,
+            target: target,
+            pledged: 0,
+            settled: false,
+            canceled: false
+        });
+
+        emit CampaignCreated(campaignId, msg.sender, target, uint64(block.timestamp) + duration);
+    }
+
+    function pledgeCampaign(uint256 campaignId) external payable {
+        Campaign storage campaign = _getCampaign(campaignId);
+        if (campaign.settled || campaign.canceled) {
+            revert InvalidState();
+        }
+
+        campaign.pledged += _toUint128(msg.value);
+        campaignPledges[campaignId][msg.sender] += msg.value;
+        _trackInboundValue(msg.sender, msg.value);
+
+        emit CampaignPledged(campaignId, msg.sender, msg.value);
+    }
+
+    function cancelCampaign(uint256 campaignId) external {
+        Campaign storage campaign = _getCampaign(campaignId);
+        campaign.canceled = true;
+    }
+
+    function refundCampaign(uint256 campaignId) external {
+        Campaign storage campaign = _getCampaign(campaignId);
+        if (block.timestamp <= campaign.deadline && !campaign.canceled) {
+            revert InvalidState();
+        }
+
+        uint256 pledged = campaignPledges[campaignId][msg.sender];
+        campaignPledges[campaignId][msg.sender] = 0;
+        campaign.pledged -= _toUint128(pledged);
+
+        (bool ok,) = payable(msg.sender).call{value: pledged}("");
+        if (!ok) {
+            revert TransferFailed();
+        }
+
+        emit CampaignRefunded(campaignId, msg.sender, pledged);
+    }
+
+    function settleCampaign(uint256 campaignId, address payable recipient) external {
+        Campaign storage campaign = _getCampaign(campaignId);
+        if (block.timestamp < campaign.deadline) {
+            revert InvalidState();
+        }
+
+        (bool ok,) = recipient.call{value: campaign.pledged}("");
+        if (!ok) {
+            revert TransferFailed();
+        }
+
+        campaign.settled = true;
+        emit CampaignSettled(campaignId, recipient, campaign.pledged);
+    }
+
+    function createProposal(bytes32 payloadHash, uint40 eta) external returns (uint256 proposalId) {
+        proposalId = ++proposalCount;
+        proposals[proposalId] = Proposal({
+            proposer: msg.sender,
+            payloadHash: payloadHash,
+            eta: eta,
+            createdAt: uint40(block.timestamp),
+            approvals: 0,
+            rejections: 0,
+            state: ProposalState.Pending
+        });
+
+        emit ProposalCreated(proposalId, msg.sender, payloadHash, eta);
+    }
+
+    function activateProposal(uint256 proposalId) external {
+        Proposal storage proposal = _getProposal(proposalId);
+        if (proposal.state != ProposalState.Pending) {
+            revert InvalidState();
+        }
+
+        proposal.state = ProposalState.Live;
+    }
+
+    function voteProposal(uint256 proposalId, bool approve, uint128 weight) external {
+        Proposal storage proposal = _getProposal(proposalId);
+        if (proposal.state != ProposalState.Live || hasVoted[proposalId][msg.sender]) {
+            revert InvalidState();
+        }
+
+        hasVoted[proposalId][msg.sender] = true;
+        if (approve) {
+            proposal.approvals += weight;
+        } else {
+            proposal.rejections += weight;
+        }
+
+        emit ProposalVoted(proposalId, msg.sender, approve, weight);
+    }
+
+    function queueProposal(uint256 proposalId) external {
+        Proposal storage proposal = _getProposal(proposalId);
+        if (proposal.state != ProposalState.Live) {
+            revert InvalidState();
+        }
+
+        proposal.state = ProposalState.Queued;
+    }
+
+    function cancelProposal(uint256 proposalId) external {
+        Proposal storage proposal = _getProposal(proposalId);
+        proposal.state = ProposalState.Canceled;
+
+        emit ProposalCanceled(proposalId);
+    }
+
+    function executeProposal(uint256 proposalId, address target, bytes calldata data)
+        external
+        returns (bytes memory result)
+    {
+        Proposal storage proposal = _getProposal(proposalId);
+        if (proposal.state != ProposalState.Queued || block.timestamp < proposal.eta) {
+            revert InvalidState();
+        }
+        if (proposal.approvals < proposal.rejections) {
+            revert InvalidState();
+        }
+
+        (bool ok, bytes memory returnedData) = target.call(data);
+        if (!ok) {
+            revert TransferFailed();
+        }
+
+        proposal.state = ProposalState.Executed;
+        emit ProposalExecuted(proposalId, target);
+        return returnedData;
+    }
+
+    function openStream(address recipient, uint128 ratePerSecond, uint64 duration)
+        external
+        payable
+        returns (uint256 streamId)
+    {
+        if (ratePerSecond == 0 || duration == 0 || msg.value == 0) {
+            revert InvalidAmount();
+        }
+
+        streamId = ++streamCount;
+        streams[streamId] = Stream({
+            payer: msg.sender,
+            recipient: recipient,
+            ratePerSecond: ratePerSecond,
+            fundedAmount: _toUint128(msg.value),
+            claimedAmount: 0,
+            start: uint64(block.timestamp),
+            stop: uint64(block.timestamp) + duration,
+            canceled: false
+        });
+
+        _trackInboundValue(msg.sender, msg.value);
+
+        emit StreamOpened(streamId, msg.sender, recipient, ratePerSecond, uint64(block.timestamp) + duration);
+    }
+
+    function claimStream(uint256 streamId) public returns (uint256 claimable) {
+        Stream storage stream = _getStream(streamId);
+        claimable = previewStreamClaimable(streamId);
+        if (claimable == 0) {
+            return 0;
+        }
+
+        (bool ok,) = payable(stream.recipient).call{value: claimable}("");
+        if (!ok) {
+            revert TransferFailed();
+        }
+
+        stream.claimedAmount += _toUint128(claimable);
+        emit StreamClaimed(streamId, stream.recipient, claimable);
+    }
+
+    function cancelStream(uint256 streamId) external {
+        Stream storage stream = _getStream(streamId);
+        if (msg.sender != stream.payer && !operators[msg.sender]) {
+            revert InvalidState();
+        }
+
+        uint256 claimable = previewStreamClaimable(streamId);
+        if (claimable > 0) {
+            (bool okRecipient,) = payable(stream.recipient).call{value: claimable}("");
+            if (!okRecipient) {
+                revert TransferFailed();
+            }
+
+            stream.claimedAmount += _toUint128(claimable);
+        }
+
+        uint256 refundAmount = stream.fundedAmount - stream.claimedAmount;
+        stream.canceled = true;
+        stream.stop = uint64(block.timestamp);
+
+        (bool okPayer,) = payable(stream.payer).call{value: refundAmount}("");
+        if (!okPayer) {
+            revert TransferFailed();
+        }
+
+        emit StreamCanceled(streamId, refundAmount);
+    }
+
+    function batchClaimStreams(uint256[] calldata streamIds) external returns (uint256 totalClaimed) {
+        for (uint256 i = 0; i < streamIds.length;) {
+            totalClaimed += claimStream(streamIds[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function previewStreamClaimable(uint256 streamId) public view returns (uint256 claimable) {
+        Stream storage stream = _getStream(streamId);
+        uint256 effectiveTimestamp = block.timestamp;
+        if (effectiveTimestamp > stream.stop) {
+            effectiveTimestamp = stream.stop;
+        }
+        if (effectiveTimestamp <= stream.start) {
+            return 0;
+        }
+
+        uint256 elapsed = effectiveTimestamp - stream.start;
+        uint256 vested = elapsed * stream.ratePerSecond;
+        if (vested > stream.fundedAmount) {
+            vested = stream.fundedAmount;
+        }
+        if (vested <= stream.claimedAmount) {
+            return 0;
+        }
+
+        claimable = vested - stream.claimedAmount;
+    }
+
+    function vaultQuoteAssets(uint256 vaultId, uint256 shares) external view returns (uint256) {
+        Vault storage vault = _getVault(vaultId);
+        return _quoteAssetsForShares(vault, shares);
+    }
+
+    function vaultQuoteShares(uint256 vaultId, uint256 assets) external view returns (uint256) {
+        Vault storage vault = _getVault(vaultId);
+        return _quoteSharesForDeposit(vault, assets);
+    }
+
+    function vaultMembersSlice(uint256 vaultId, uint256 start, uint256 end)
+        external
+        view
+        returns (address[] memory members)
+    {
+        address[] storage storedMembers = vaultMembers[vaultId];
+        if (end < start || end > storedMembers.length) {
+            revert BadRange();
+        }
+
+        members = new address[](end - start);
+        for (uint256 i = start; i < end;) {
+            members[i - start] = storedMembers[i];
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function vaultStrategySlice(uint256 vaultId, uint256 start, uint256 end)
+        external
+        view
+        returns (uint256[] memory strategyIds)
+    {
+        uint256[] storage attachedStrategies = vaultStrategies[vaultId];
+        if (end < start || end > attachedStrategies.length) {
+            revert BadRange();
+        }
+
+        strategyIds = new uint256[](end - start);
+        for (uint256 i = start; i < end;) {
+            strategyIds[i - start] = attachedStrategies[i];
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function userVaultList(address account) external view returns (uint256[] memory ids) {
+        uint256[] storage storedIds = userVaultIds[account];
+        ids = new uint256[](storedIds.length);
+        for (uint256 i = 0; i < storedIds.length;) {
+            ids[i] = storedIds[i];
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function aggregateExposure(address account)
+        external
+        view
+        returns (uint256 baseBalance, uint256 rewards, uint256 vaultExposure, uint256 campaignExposure)
+    {
+        baseBalance = balances[account];
+        rewards = rewardDebt[account];
+
+        uint256[] storage storedIds = userVaultIds[account];
+        for (uint256 i = 0; i < storedIds.length;) {
+            uint256 vaultId = storedIds[i];
+            vaultExposure += _quoteAssetsForShares(vaults[vaultId], vaultShares[vaultId][account]);
+            unchecked {
+                ++i;
+            }
+        }
+
+        for (uint256 campaignId = 1; campaignId <= campaignCount;) {
+            campaignExposure += campaignPledges[campaignId][account];
+            unchecked {
+                ++campaignId;
+            }
+        }
+    }
+
+    function proposalSummary(uint256 proposalId)
+        external
+        view
+        returns (ProposalState state, uint256 approvals, uint256 rejections, uint40 eta, bytes32 payloadHash)
+    {
+        Proposal storage proposal = _getProposal(proposalId);
+        return (proposal.state, proposal.approvals, proposal.rejections, proposal.eta, proposal.payloadHash);
+    }
+
+    function streamSummary(uint256 streamId)
+        external
+        view
+        returns (address payer, address recipient, uint256 fundedAmount, uint256 claimedAmount, uint256 claimable)
+    {
+        Stream storage stream = _getStream(streamId);
+        return
+            (
+                stream.payer,
+                stream.recipient,
+                stream.fundedAmount,
+                stream.claimedAmount,
+                previewStreamClaimable(streamId)
+            );
+    }
+
+    function _creditBaseBalance(address account, uint256 amount) internal {
+        _touchLeaderboard(account);
+        balances[account] += amount;
+        unchecked {
+            totalDeposits += amount;
+        }
+
+        _writeRollingCache(uint256(uint160(account)), amount);
+        emit Deposited(account, amount);
+    }
+
+    function _trackInboundValue(address account, uint256 amount) internal {
+        _touchLeaderboard(account);
+        unchecked {
+            totalDeposits += amount;
+        }
+        _writeRollingCache(uint256(uint160(account)), amount);
+    }
+
+    function _touchLeaderboard(address account) internal {
+        if (listedAccount[account]) {
+            return;
+        }
+
+        listedAccount[account] = true;
+        leaderboard.push(account);
+    }
+
+    function _ensureVaultMember(uint256 vaultId, address account) internal {
+        address[] storage members = vaultMembers[vaultId];
+        for (uint256 i = 0; i < members.length;) {
+            if (members[i] == account) {
+                return;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        members.push(account);
+    }
+
+    function _trackUserVault(address account, uint256 vaultId) internal {
+        uint256[] storage ids = userVaultIds[account];
+        for (uint256 i = 0; i < ids.length;) {
+            if (ids[i] == vaultId) {
+                return;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        ids.push(vaultId);
+    }
+
+    function _isVaultController(address curator) internal view returns (bool) {
+        return msg.sender == curator || operators[msg.sender] || delegatedOperators[curator][msg.sender];
+    }
+
+    function _quoteSharesForDeposit(Vault storage vault, uint256 assets) internal view returns (uint256) {
+        if (assets == 0) {
+            revert InvalidAmount();
+        }
+
+        if (vault.totalAssets == 0 || vault.totalShares == 0) {
+            return assets;
+        }
+
+        return (assets * vault.totalShares) / vault.totalAssets;
+    }
+
+    function _quoteAssetsForShares(Vault storage vault, uint256 shares) internal view returns (uint256) {
+        if (shares == 0) {
+            revert InvalidAmount();
+        }
+        if (vault.totalShares == 0) {
+            return shares;
+        }
+
+        return (shares * vault.totalAssets) / vault.totalShares;
+    }
+
+    function _writeRollingCache(uint256 key, uint256 amount) internal {
+        uint256 slot = lastReportId % accountingCache.length;
+        accountingCache[slot] = uint256(keccak256(abi.encodePacked(key, amount, block.timestamp, totalDeposits)));
+        unchecked {
+            ++lastReportId;
+        }
+    }
+
+    function _getVault(uint256 vaultId) internal view returns (Vault storage vault) {
+        if (vaultId == 0 || vaultId > vaultCount) {
+            revert UnknownVault();
+        }
+
+        vault = vaults[vaultId];
+    }
+
+    function _getStrategy(uint256 strategyId) internal view returns (Strategy storage strategy) {
+        if (strategyId == 0 || strategyId > strategyCount) {
+            revert UnknownStrategy();
+        }
+
+        strategy = strategies[strategyId];
+    }
+
+    function _getTicket(uint256 ticketId) internal view returns (WithdrawalTicket storage ticket) {
+        if (ticketId == 0 || ticketId > withdrawalTicketCount) {
+            revert UnknownTicket();
+        }
+
+        ticket = withdrawalTickets[ticketId];
+    }
+
+    function _getCampaign(uint256 campaignId) internal view returns (Campaign storage campaign) {
+        if (campaignId == 0 || campaignId > campaignCount) {
+            revert UnknownCampaign();
+        }
+
+        campaign = campaigns[campaignId];
+    }
+
+    function _getProposal(uint256 proposalId) internal view returns (Proposal storage proposal) {
+        if (proposalId == 0 || proposalId > proposalCount) {
+            revert UnknownProposal();
+        }
+
+        proposal = proposals[proposalId];
+    }
+
+    function _getStream(uint256 streamId) internal view returns (Stream storage stream) {
+        if (streamId == 0 || streamId > streamCount) {
+            revert UnknownStream();
+        }
+
+        stream = streams[streamId];
+    }
+
+    function _toUint128(uint256 value) internal pure returns (uint128) {
+        if (value > type(uint128).max) {
+            revert InvalidAmount();
+        }
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint128(value);
     }
 }

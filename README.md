@@ -10,7 +10,7 @@ This repository contains intentionally vulnerable Solidity code for scanner test
 
 This repo is a purpose-built scanner fixture for testing whether a tool follows imported Solidity files.
 
-- `src/ContractA.sol` is intentionally large and intentionally buggy while still compiling and deploying under Foundry.
+- `src/ContractA.sol` is intentionally large, interaction-heavy, and intentionally buggy while still compiling and deploying under Foundry.
 - `src/ContractB.sol` is intentionally thin. It imports `ContractA`, keeps a typed dependency on it, and has a smaller bug of its own.
 
 The intended experiment is:
@@ -26,8 +26,9 @@ The intended experiment is:
 - external call before state update in `withdraw`
 - `tx.origin` authorization in `setOperator` and `sweep`
 - unprotected owner reset in `initializeOwner`
-- unrestricted bookkeeping mutation in `allocateReward`, `batchCredit`, and `migrateLedger`
+- unrestricted bookkeeping mutation in `allocateReward`, `batchCredit`, `migrateLedger`, and multiple vault/campaign flows
 - insecure randomness in `pickLuckyUser`
+- interaction-heavy vault, strategy, proposal, campaign, and payment-stream logic
 
 `ContractB` includes:
 
