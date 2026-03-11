@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 import {ContractA} from "./ContractA.sol";
 
+/// @notice Intentionally vulnerable scanner fixture. Do not deploy or reuse.
+/// @dev This contract exists to test whether scanners inspect imported dependencies.
 contract ContractB {
     ContractA public immutable TARGET;
     mapping(address => uint256) public mirroredCredits;

@@ -1,5 +1,13 @@
 # AI Scanner Solidity Fixture
 
+## Warning
+
+This repository contains intentionally vulnerable Solidity code for scanner testing only.
+
+- Do not deploy these contracts to any live network.
+- Do not reuse this code in production, staging, tutorials, or audits as a safe reference.
+- The bugs are deliberate and are present specifically to test whether tools follow imports and report inherited context.
+
 This repo is a purpose-built scanner fixture for testing whether a tool follows imported Solidity files.
 
 - `src/ContractA.sol` is intentionally large and intentionally buggy while still compiling and deploying under Foundry.

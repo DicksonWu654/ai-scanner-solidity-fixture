@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+/// @notice Intentionally vulnerable scanner fixture. Do not deploy or reuse.
+/// @dev This contract is deliberately buggy and oversized for import-following tests.
 contract ContractA {
     error InsufficientBalance();
     error EmptyList();
