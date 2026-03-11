@@ -13,6 +13,7 @@ This repo is a purpose-built scanner fixture for testing whether a tool follows 
 - `src/ContractA.sol` is intentionally large, interaction-heavy, and intentionally buggy while still compiling and deploying under Foundry.
 - `src/ContractA.sol` also imports helper modules in `src/modules/`, but the runtime call chain stays shallow: `ContractB -> ContractA -> module`.
 - `src/ContractB.sol` now inherits from `ContractA` and exposes explicit wrapper functions that call `super`, which is useful for scanners that reason at the function level.
+- `src/ContractACompact.sol` is a separate experiment: similar vulnerable ideas jammed into very few lines of Solidity source.
 
 The intended experiment is:
 

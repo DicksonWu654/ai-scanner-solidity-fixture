@@ -51,12 +51,12 @@ contract ScannerFixtureTest is Test {
     }
 
     function testCampaignProposalAndStreamFlow() public {
-        uint256 campaignId = contractB.funcCreateCampaign(2 ether, 1 days);
+        uint256 campaignId = contractB.createCampaign(2 ether, 1 days);
         contractB.pledgeCampaign{value: 1 ether}(campaignId);
 
         bytes32 payloadHash = keccak256("rebalance");
         uint40 eta = uint40(block.timestamp + 1 days);
-        uint256 proposalId = contractB.funcCreateProposal(payloadHash, eta);
+        uint256 proposalId = contractB.createProposal(payloadHash, eta);
         contractB.activateProposal(proposalId);
         contractB.voteProposal(proposalId, true, 5);
         contractB.queueProposal(proposalId);

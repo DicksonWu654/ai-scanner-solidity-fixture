@@ -45,14 +45,6 @@ contract ContractB is ContractA {
         return super.submitRebalance(vaultId, strategyId, amount, reduceDebt);
     }
 
-    function funcCreateCampaign(uint128 target, uint64 duration) external returns (uint256) {
-        return super.createCampaign(target, duration);
-    }
-
-    function funcCreateProposal(bytes32 payloadHash, uint40 eta) external returns (uint256) {
-        return super.createProposal(payloadHash, eta);
-    }
-
     function funcOpenStream(address recipient, uint128 ratePerSecond, uint64 duration)
         external
         payable
