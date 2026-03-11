@@ -11,13 +11,15 @@ This repository contains intentionally vulnerable Solidity code for scanner test
 This repo is a purpose-built scanner fixture for testing whether a tool follows imported Solidity files.
 
 - `src/ContractA.sol` is intentionally large, interaction-heavy, and intentionally buggy while still compiling and deploying under Foundry.
-- `src/ContractB.sol` is intentionally thin. It imports `ContractA`, keeps a typed dependency on it, and has a smaller bug of its own.
+- `src/ContractA.sol` also imports helper modules in `src/modules/` so the dependency graph extends beyond a single file.
+- `src/ContractB.sol` now inherits from `ContractA` and exposes explicit wrapper functions that call `super`, which is useful for scanners that reason at the function level.
 
 The intended experiment is:
 
 1. Submit only `ContractB.sol` to the scanner.
-2. Check whether the scanner follows the import graph into `ContractA.sol`.
-3. Compare findings reported directly on `ContractB` versus findings surfaced from `ContractA`.
+2. Check whether the scanner follows the import graph into `ContractA.sol` and its imported helper modules.
+3. Check whether findings are surfaced through the explicit wrapper functions in `ContractB`.
+4. Compare findings reported directly on `ContractB` versus findings surfaced from inherited and imported code.
 
 ## Intentionally Included Issues
 
@@ -28,7 +30,7 @@ The intended experiment is:
 - unprotected owner reset in `initializeOwner`
 - unrestricted bookkeeping mutation in `allocateReward`, `batchCredit`, `migrateLedger`, and multiple vault/campaign flows
 - insecure randomness in `pickLuckyUser`
-- interaction-heavy vault, strategy, proposal, campaign, and payment-stream logic
+- interaction-heavy vault, strategy, proposal, campaign, payment-stream, and synthetic route logic
 
 `ContractB` includes:
 

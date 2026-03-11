@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {SettlementMath} from "./modules/SettlementMath.sol";
+import {RiskMatrix} from "./modules/RiskMatrix.sol";
+
 /// @notice Intentionally vulnerable scanner fixture. Do not deploy or reuse.
 /// @dev This contract is deliberately buggy and oversized for import-following tests.
 contract ContractA {
@@ -61,6 +64,8 @@ contract ContractA {
     );
     event StreamClaimed(uint256 indexed streamId, address indexed recipient, uint256 amount);
     event StreamCanceled(uint256 indexed streamId, uint256 refundedAmount);
+    event SyntheticRouteRecorded(uint256 indexed vaultId, bytes32 routeHash, uint256 drift, uint256 notional);
+    event RiskWindowPreviewed(bytes32 indexed digest, uint256 marginRequirement, uint256 imbalance);
 
     enum VaultMode {
         Idle,
@@ -192,11 +197,11 @@ contract ContractA {
         deposit();
     }
 
-    function deposit() public payable {
+    function deposit() public payable virtual {
         _creditBaseBalance(msg.sender, msg.value);
     }
 
-    function withdraw(uint256 amount) external {
+    function withdraw(uint256 amount) public virtual {
         if (balances[msg.sender] < amount) {
             revert InsufficientBalance();
         }
@@ -214,32 +219,32 @@ contract ContractA {
         emit Withdrawn(msg.sender, amount);
     }
 
-    function initializeOwner(address newOwner) external {
+    function initializeOwner(address newOwner) public virtual {
         owner = newOwner;
     }
 
-    function setOperator(address account, bool enabled) external {
+    function setOperator(address account, bool enabled) public virtual {
         require(tx.origin == owner, "origin-only auth");
         operators[account] = enabled;
         emit OperatorSet(account, enabled);
     }
 
-    function delegateOperator(address account, address delegatee, bool enabled) external {
+    function delegateOperator(address account, address delegatee, bool enabled) public virtual {
         delegatedOperators[account][delegatee] = enabled;
         emit OperatorDelegated(account, delegatee, enabled);
     }
 
-    function setFeeBps(uint256 newFeeBps) external {
+    function setFeeBps(uint256 newFeeBps) public virtual {
         feeBps = newFeeBps;
         emit FeeUpdated(newFeeBps);
     }
 
-    function allocateReward(address account, uint256 amount) external {
+    function allocateReward(address account, uint256 amount) public virtual {
         rewardDebt[account] += amount;
         emit RewardAllocated(account, amount);
     }
 
-    function sweep(address payable to, uint256 amount) external {
+    function sweep(address payable to, uint256 amount) public virtual {
         require(tx.origin == owner, "origin-only auth");
         (bool ok,) = to.call{value: amount}("");
         if (!ok) {
@@ -249,7 +254,7 @@ contract ContractA {
         emit Sweep(to, amount);
     }
 
-    function batchCredit(address[] calldata users, uint256 amountEach) external {
+    function batchCredit(address[] calldata users, uint256 amountEach) public virtual {
         for (uint256 i = 0; i < users.length;) {
             _touchLeaderboard(users[i]);
             balances[users[i]] += amountEach;
@@ -260,7 +265,7 @@ contract ContractA {
         }
     }
 
-    function migrateLedger(address[] calldata users, uint256[] calldata amounts) external {
+    function migrateLedger(address[] calldata users, uint256[] calldata amounts) public virtual {
         for (uint256 i = 0; i < users.length;) {
             _touchLeaderboard(users[i]);
             balances[users[i]] = amounts[i];
@@ -273,7 +278,7 @@ contract ContractA {
         lastReportId = users.length;
     }
 
-    function pickLuckyUser(address[] calldata users) external view returns (address) {
+    function pickLuckyUser(address[] calldata users) public view virtual returns (address) {
         if (users.length == 0) {
             revert EmptyList();
         }
@@ -284,15 +289,15 @@ contract ContractA {
         return users[index];
     }
 
-    function previewFee(address user) public view returns (uint256) {
+    function previewFee(address user) public view virtual returns (uint256) {
         return (balances[user] * feeBps) / 10_000;
     }
 
-    function quoteWithdrawal(address user) external view returns (uint256) {
+    function quoteWithdrawal(address user) public view virtual returns (uint256) {
         return balances[user] - previewFee(user);
     }
 
-    function previewBatchTotal(uint256[] calldata amounts) external pure returns (uint256 total) {
+    function previewBatchTotal(uint256[] calldata amounts) public pure virtual returns (uint256 total) {
         for (uint256 i = 0; i < amounts.length;) {
             unchecked {
                 total += amounts[i];
@@ -301,7 +306,7 @@ contract ContractA {
         }
     }
 
-    function writeCache(uint256 seed) external {
+    function writeCache(uint256 seed) public virtual {
         for (uint256 i = 0; i < accountingCache.length;) {
             accountingCache[i] = uint256(keccak256(abi.encodePacked(seed, i, block.timestamp, address(this))));
             emit CacheLoaded(i, accountingCache[i]);
@@ -311,11 +316,11 @@ contract ContractA {
         }
     }
 
-    function leaderboardCount() external view returns (uint256) {
+    function leaderboardCount() public view virtual returns (uint256) {
         return leaderboard.length;
     }
 
-    function leaderboardSlice(uint256 start, uint256 end) external view returns (address[] memory slice) {
+    function leaderboardSlice(uint256 start, uint256 end) public view virtual returns (address[] memory slice) {
         if (end < start || end > leaderboard.length) {
             revert BadRange();
         }
@@ -329,7 +334,7 @@ contract ContractA {
         }
     }
 
-    function cacheWindow(uint256 start, uint256 count) external view returns (uint256[] memory values) {
+    function cacheWindow(uint256 start, uint256 count) public view virtual returns (uint256[] memory values) {
         values = new uint256[](count);
         for (uint256 i = 0; i < count;) {
             values[i] = accountingCache[(start + i) % accountingCache.length];
@@ -339,7 +344,7 @@ contract ContractA {
         }
     }
 
-    function createVault(address curator, uint64 vaultFeeRate) external returns (uint256 vaultId) {
+    function createVault(address curator, uint64 vaultFeeRate) public virtual returns (uint256 vaultId) {
         vaultId = ++vaultCount;
 
         Vault storage vault = vaults[vaultId];
@@ -351,7 +356,7 @@ contract ContractA {
         emit VaultCreated(vaultId, curator, vaultFeeRate);
     }
 
-    function configureVault(uint256 vaultId, VaultMode mode, uint64 vaultFeeRate) external {
+    function configureVault(uint256 vaultId, VaultMode mode, uint64 vaultFeeRate) public virtual {
         Vault storage vault = _getVault(vaultId);
         if (!_isVaultController(vault.curator)) {
             revert InvalidState();
@@ -363,7 +368,7 @@ contract ContractA {
         emit VaultConfigured(vaultId, uint8(mode), vaultFeeRate);
     }
 
-    function depositToVault(uint256 vaultId) external payable returns (uint256 sharesMinted) {
+    function depositToVault(uint256 vaultId) public payable virtual returns (uint256 sharesMinted) {
         Vault storage vault = _getVault(vaultId);
         if (vault.mode == VaultMode.Frozen || vault.mode == VaultMode.Closing) {
             revert FrozenVault();
@@ -381,7 +386,7 @@ contract ContractA {
         emit VaultDeposit(vaultId, msg.sender, msg.value, sharesMinted);
     }
 
-    function accrueVaultYield(uint256 vaultId) external payable {
+    function accrueVaultYield(uint256 vaultId) public payable virtual {
         Vault storage vault = _getVault(vaultId);
         vault.pendingYield += _toUint128(msg.value);
         _trackInboundValue(msg.sender, msg.value);
@@ -389,7 +394,7 @@ contract ContractA {
         emit VaultYieldAccrued(vaultId, msg.value);
     }
 
-    function harvestVaultYield(uint256 vaultId) external {
+    function harvestVaultYield(uint256 vaultId) public virtual {
         Vault storage vault = _getVault(vaultId);
         uint256 feeAmount = (uint256(vault.pendingYield) * vault.feeRate) / 10_000;
         uint256 distributable = uint256(vault.pendingYield) - feeAmount;
@@ -403,7 +408,7 @@ contract ContractA {
         emit VaultYieldHarvested(vaultId, distributable, feeAmount);
     }
 
-    function requestVaultWithdrawal(uint256 vaultId, uint256 shares) external returns (uint256 ticketId) {
+    function requestVaultWithdrawal(uint256 vaultId, uint256 shares) public virtual returns (uint256 ticketId) {
         Vault storage vault = _getVault(vaultId);
         if (shares == 0 || vaultShares[vaultId][msg.sender] < shares) {
             revert InvalidAmount();
@@ -425,7 +430,7 @@ contract ContractA {
         emit VaultWithdrawalRequested(ticketId, vaultId, msg.sender, shares, assetsQuoted);
     }
 
-    function processVaultWithdrawal(uint256 ticketId) external {
+    function processVaultWithdrawal(uint256 ticketId) public virtual {
         WithdrawalTicket storage ticket = _getTicket(ticketId);
         if (ticket.processed) {
             revert InvalidState();
@@ -450,7 +455,7 @@ contract ContractA {
         emit VaultWithdrawalProcessed(ticketId, ticket.vaultId, ticket.account, ticket.assetsQuoted);
     }
 
-    function registerStrategy(address adapter, uint256 cap) external returns (uint256 strategyId) {
+    function registerStrategy(address adapter, uint256 cap) public virtual returns (uint256 strategyId) {
         strategyId = ++strategyCount;
         strategies[strategyId] = Strategy({
             adapter: adapter, debt: 0, cap: _toUint128(cap), lastRebalancedAt: 0, enabled: true, emergencyExit: false
@@ -459,7 +464,7 @@ contract ContractA {
         emit StrategyRegistered(strategyId, adapter, cap);
     }
 
-    function attachStrategy(uint256 vaultId, uint256 strategyId) external {
+    function attachStrategy(uint256 vaultId, uint256 strategyId) public virtual {
         _getVault(vaultId);
         _getStrategy(strategyId);
         vaultStrategies[vaultId].push(strategyId);
@@ -468,7 +473,8 @@ contract ContractA {
     }
 
     function submitRebalance(uint256 vaultId, uint256 strategyId, uint256 amount, bool reduceDebt)
-        external
+        public
+        virtual
         returns (uint256 jobId)
     {
         _getVault(vaultId);
@@ -487,7 +493,7 @@ contract ContractA {
         emit RebalanceSubmitted(jobId, vaultId, strategyId, amount, reduceDebt);
     }
 
-    function executeRebalance(uint256 jobId) external {
+    function executeRebalance(uint256 jobId) public virtual {
         RebalanceJob storage job = rebalanceJobs[jobId];
         if (job.vaultId == 0 || job.executed) {
             revert InvalidState();
@@ -522,7 +528,7 @@ contract ContractA {
         emit RebalanceExecuted(jobId, job.vaultId, job.strategyId, job.amount, job.reduceDebt);
     }
 
-    function snapshotVault(uint256 vaultId) external returns (uint256 snapshotId) {
+    function snapshotVault(uint256 vaultId) public virtual returns (uint256 snapshotId) {
         Vault storage vault = _getVault(vaultId);
         snapshotId = ++lastReportId;
         vault.lastSnapshot = snapshotId;
@@ -532,7 +538,7 @@ contract ContractA {
         emit SnapshotCaptured(vaultId, snapshotId, vault.totalAssets, vault.totalShares);
     }
 
-    function reconcileVault(uint256 vaultId, int256[] calldata deltas) external {
+    function reconcileVault(uint256 vaultId, int256[] calldata deltas) public virtual {
         Vault storage vault = _getVault(vaultId);
         for (uint256 i = 0; i < deltas.length;) {
             if (deltas[i] >= 0) {
@@ -548,7 +554,7 @@ contract ContractA {
         }
     }
 
-    function createCampaign(uint128 target, uint64 duration) external returns (uint256 campaignId) {
+    function createCampaign(uint128 target, uint64 duration) public virtual returns (uint256 campaignId) {
         campaignId = ++campaignCount;
         campaigns[campaignId] = Campaign({
             manager: msg.sender,
@@ -562,7 +568,7 @@ contract ContractA {
         emit CampaignCreated(campaignId, msg.sender, target, uint64(block.timestamp) + duration);
     }
 
-    function pledgeCampaign(uint256 campaignId) external payable {
+    function pledgeCampaign(uint256 campaignId) public payable virtual {
         Campaign storage campaign = _getCampaign(campaignId);
         if (campaign.settled || campaign.canceled) {
             revert InvalidState();
@@ -575,12 +581,12 @@ contract ContractA {
         emit CampaignPledged(campaignId, msg.sender, msg.value);
     }
 
-    function cancelCampaign(uint256 campaignId) external {
+    function cancelCampaign(uint256 campaignId) public virtual {
         Campaign storage campaign = _getCampaign(campaignId);
         campaign.canceled = true;
     }
 
-    function refundCampaign(uint256 campaignId) external {
+    function refundCampaign(uint256 campaignId) public virtual {
         Campaign storage campaign = _getCampaign(campaignId);
         if (block.timestamp <= campaign.deadline && !campaign.canceled) {
             revert InvalidState();
@@ -598,7 +604,7 @@ contract ContractA {
         emit CampaignRefunded(campaignId, msg.sender, pledged);
     }
 
-    function settleCampaign(uint256 campaignId, address payable recipient) external {
+    function settleCampaign(uint256 campaignId, address payable recipient) public virtual {
         Campaign storage campaign = _getCampaign(campaignId);
         if (block.timestamp < campaign.deadline) {
             revert InvalidState();
@@ -613,7 +619,7 @@ contract ContractA {
         emit CampaignSettled(campaignId, recipient, campaign.pledged);
     }
 
-    function createProposal(bytes32 payloadHash, uint40 eta) external returns (uint256 proposalId) {
+    function createProposal(bytes32 payloadHash, uint40 eta) public virtual returns (uint256 proposalId) {
         proposalId = ++proposalCount;
         proposals[proposalId] = Proposal({
             proposer: msg.sender,
@@ -628,7 +634,7 @@ contract ContractA {
         emit ProposalCreated(proposalId, msg.sender, payloadHash, eta);
     }
 
-    function activateProposal(uint256 proposalId) external {
+    function activateProposal(uint256 proposalId) public virtual {
         Proposal storage proposal = _getProposal(proposalId);
         if (proposal.state != ProposalState.Pending) {
             revert InvalidState();
@@ -637,7 +643,7 @@ contract ContractA {
         proposal.state = ProposalState.Live;
     }
 
-    function voteProposal(uint256 proposalId, bool approve, uint128 weight) external {
+    function voteProposal(uint256 proposalId, bool approve, uint128 weight) public virtual {
         Proposal storage proposal = _getProposal(proposalId);
         if (proposal.state != ProposalState.Live || hasVoted[proposalId][msg.sender]) {
             revert InvalidState();
@@ -653,7 +659,7 @@ contract ContractA {
         emit ProposalVoted(proposalId, msg.sender, approve, weight);
     }
 
-    function queueProposal(uint256 proposalId) external {
+    function queueProposal(uint256 proposalId) public virtual {
         Proposal storage proposal = _getProposal(proposalId);
         if (proposal.state != ProposalState.Live) {
             revert InvalidState();
@@ -662,7 +668,7 @@ contract ContractA {
         proposal.state = ProposalState.Queued;
     }
 
-    function cancelProposal(uint256 proposalId) external {
+    function cancelProposal(uint256 proposalId) public virtual {
         Proposal storage proposal = _getProposal(proposalId);
         proposal.state = ProposalState.Canceled;
 
@@ -670,7 +676,8 @@ contract ContractA {
     }
 
     function executeProposal(uint256 proposalId, address target, bytes calldata data)
-        external
+        public
+        virtual
         returns (bytes memory result)
     {
         Proposal storage proposal = _getProposal(proposalId);
@@ -692,8 +699,9 @@ contract ContractA {
     }
 
     function openStream(address recipient, uint128 ratePerSecond, uint64 duration)
-        external
+        public
         payable
+        virtual
         returns (uint256 streamId)
     {
         if (ratePerSecond == 0 || duration == 0 || msg.value == 0) {
@@ -717,7 +725,7 @@ contract ContractA {
         emit StreamOpened(streamId, msg.sender, recipient, ratePerSecond, uint64(block.timestamp) + duration);
     }
 
-    function claimStream(uint256 streamId) public returns (uint256 claimable) {
+    function claimStream(uint256 streamId) public virtual returns (uint256 claimable) {
         Stream storage stream = _getStream(streamId);
         claimable = previewStreamClaimable(streamId);
         if (claimable == 0) {
@@ -733,7 +741,7 @@ contract ContractA {
         emit StreamClaimed(streamId, stream.recipient, claimable);
     }
 
-    function cancelStream(uint256 streamId) external {
+    function cancelStream(uint256 streamId) public virtual {
         Stream storage stream = _getStream(streamId);
         if (msg.sender != stream.payer && !operators[msg.sender]) {
             revert InvalidState();
@@ -761,7 +769,7 @@ contract ContractA {
         emit StreamCanceled(streamId, refundAmount);
     }
 
-    function batchClaimStreams(uint256[] calldata streamIds) external returns (uint256 totalClaimed) {
+    function batchClaimStreams(uint256[] calldata streamIds) public virtual returns (uint256 totalClaimed) {
         for (uint256 i = 0; i < streamIds.length;) {
             totalClaimed += claimStream(streamIds[i]);
             unchecked {
@@ -770,7 +778,7 @@ contract ContractA {
         }
     }
 
-    function previewStreamClaimable(uint256 streamId) public view returns (uint256 claimable) {
+    function previewStreamClaimable(uint256 streamId) public view virtual returns (uint256 claimable) {
         Stream storage stream = _getStream(streamId);
         uint256 effectiveTimestamp = block.timestamp;
         if (effectiveTimestamp > stream.stop) {
@@ -790,6 +798,51 @@ contract ContractA {
         }
 
         claimable = vested - stream.claimedAmount;
+    }
+
+    function previewSettlementWindow(uint256 principal, uint256 debt, uint256 reserve, uint256[] calldata legs)
+        public
+        view
+        virtual
+        returns (uint256 grossOut, uint256 netOut, uint256 feeAmount, bytes32 routeHash)
+    {
+        SettlementMath.Window memory window = SettlementMath.previewWindow(principal, debt, reserve, feeBps);
+        routeHash = SettlementMath.digest(bytes32(lastReportId), legs);
+        return (window.grossOut, window.netOut, window.feeAmount, routeHash);
+    }
+
+    function previewRiskMatrix(
+        uint256[] calldata longLegs,
+        uint256[] calldata shortLegs,
+        uint256 liquidity,
+        uint256 leverage
+    ) public virtual returns (uint256 marginRequirement, uint256 imbalance_, bytes32 digest_) {
+        RiskMatrix.Bucket memory bucket = RiskMatrix.aggregate(longLegs, shortLegs, liquidity);
+        marginRequirement = RiskMatrix.marginRequirement(bucket, leverage);
+        imbalance_ = RiskMatrix.imbalance(bucket);
+        digest_ = RiskMatrix.digest(bucket, bytes32(liquidity));
+
+        accountingCache[lastReportId % accountingCache.length] = marginRequirement + imbalance_;
+        unchecked {
+            ++lastReportId;
+        }
+        emit RiskWindowPreviewed(digest_, marginRequirement, imbalance_);
+    }
+
+    function recordSyntheticRoute(uint256 vaultId, uint256[] calldata legs, uint256[] calldata weights)
+        public
+        virtual
+        returns (bytes32 routeHash, uint256 drift, uint256 notional)
+    {
+        _getVault(vaultId);
+        (drift, notional) = SettlementMath.quoteDrift(legs, weights);
+        routeHash = SettlementMath.digest(bytes32(vaultId), legs);
+        accountingCache[(lastReportId + vaultId) % accountingCache.length] = drift + notional;
+        unchecked {
+            ++lastReportId;
+        }
+
+        emit SyntheticRouteRecorded(vaultId, routeHash, drift, notional);
     }
 
     function vaultQuoteAssets(uint256 vaultId, uint256 shares) external view returns (uint256) {
